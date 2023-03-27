@@ -7,6 +7,8 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Azure.Storage.Blobs;
+
 
 namespace LogsProcessor
 {
@@ -17,19 +19,45 @@ namespace LogsProcessor
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
 
-            string name = req.Query["name"];
+            string file = req.Query["f"];
+            log.LogInformation($"Requesting file: {file}");
+
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
+            file = file ?? data?.file;
 
-            string responseMessage = string.IsNullOrEmpty(name)
-                ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-                : $"Hello, {name}. This HTTP triggered function executed successfully.";
+            string responseMessage = string.IsNullOrEmpty(file)
+                ? $"Function called specifiying an empty file: {file}."
+                : $"Function called specifiying the following file: {file}.";
 
-            return new OkObjectResult(responseMessage);
+            var bIsValid = await IsFileValid(file);
+
+            return bIsValid ? new OkObjectResult(responseMessage) : new NotFoundObjectResult("File does not exists");
+        }
+
+        static async Task<bool>IsFileValid( string file)
+        {
+            // Replace with your connection string
+            string connectionString = "DefaultEndpointsProtocol=https;AccountName=logsidx;AccountKey=4E0PsICSSB5SdY+NiHICNL+6YGGEUlFE8uDyTqk0ISInQClwsQNGQ0WGsSHzm6vZ15SGgIGuiIcy+AStqT19+A==;EndpointSuffix=core.windows.net";
+            // Replace with your container name
+            string containerName = "logsdata";
+            // Replace with your file name
+            string fileName = file;
+
+            // Create a blob container client
+            BlobContainerClient containerClient = new BlobContainerClient(connectionString, containerName);
+
+            // Create a blob client
+            BlobClient blobClient = containerClient.GetBlobClient(fileName);
+
+            // Check if the blob exists
+            bool exists = await blobClient.ExistsAsync();
+
+            // Print the result
+            Console.WriteLine($"The file {fileName} {(exists ? "exists" : "does not exist")} in the container {containerName}.");
+            return exists;
         }
     }
 }
